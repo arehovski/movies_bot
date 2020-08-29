@@ -1,17 +1,18 @@
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, executor
+from aiogram.contrib.middlewares.logging import LoggingMiddleware
 import config
 import asyncio
+import logging
+from database import DatabaseManager
 
+logging.basicConfig(level=logging.INFO)
 
-loop = asyncio.get_event_loop()
 bot = Bot(config.BOT_TOKEN)
-dp = Dispatcher(bot, loop)
-
-
-@dp.message_handler()
-async def echo_message(message: types.Message):
-    await message.reply(message.text)
-
+dp = Dispatcher(bot)
+dp.middleware.setup(LoggingMiddleware())
 
 if __name__ == '__main__':
+    from handlers import dp
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(DatabaseManager.create_db_connection())
     executor.start_polling(dp)
