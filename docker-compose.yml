@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  movies_bot:
+    container_name: bot
+    build:
+      context: .
+    command: python main.py
+    restart: always
+    network_mode: host
+
+    env_file:
+      - ".env"
