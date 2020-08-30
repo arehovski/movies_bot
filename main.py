@@ -1,18 +1,32 @@
+import asyncpg
 from aiogram import Bot, Dispatcher, executor
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 import config
 import asyncio
 import logging
-from database import DatabaseManager
 
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(config.BOT_TOKEN)
-dp = Dispatcher(bot)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
 dp.middleware.setup(LoggingMiddleware())
+loop = asyncio.get_event_loop()
+
+
+async def create_db_connection():
+    return await asyncpg.create_pool(
+        database='movies',
+        host=config.PG_HOST,
+        port=config.PG_PORT,
+        user=config.PG_USER,
+        password=config.PG_PASS
+    )
+
+
+conn = loop.run_until_complete(create_db_connection())
 
 if __name__ == '__main__':
     from handlers import dp
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(DatabaseManager.create_db_connection())
     executor.start_polling(dp)

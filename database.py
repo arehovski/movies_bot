@@ -1,17 +1,12 @@
 import asyncpg
-import config
+from main import conn
 
 
-class DatabaseManager:
+class DBManager:
+    conn: asyncpg.Connection = conn
 
-    @staticmethod
-    async def create_db_connection():
-        conn: asyncpg.Connection = await asyncpg.connect(
-            database='movies',
-            host=config.PG_HOST,
-            port=config.PG_PORT,
-            user=config.PG_USER,
-            password=config.PG_PASS
-        )
-        users = await conn.execute('SELECT * FROM movies_genre')
-        print(users)
+    async def get_all_movies(self):
+        return await self.conn.fetch("SELECT * FROM movies_movie")
+
+
+db_manager = DBManager()
