@@ -2,9 +2,16 @@ import random
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, \
     InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.dispatcher.filters import Command, Text
-from aiogram.utils.markdown import text, bold, italic, code, pre
 from main import dp, bot
 from database import db_manager
+
+
+genres = None
+
+
+def movies_output_message(movies):
+    return '\n'.join(' - '.join((movie.get('title'), str(round(movie.get('rating_kp'), 1)),
+                                 f"/{movie.get('id')}")) for movie in movies)
 
 
 @dp.message_handler(commands=['start'])
@@ -15,26 +22,36 @@ async def start_command(message: Message):
                         reply_markup=keyboard)
 
 
+@dp.message_handler(Text('Поиск по названию'))
+async def title_search_reply(message: Message):
+    await message.reply("<i>Введите название фильма. Например:</i> <b>Побег из Шоушенка.</b>", parse_mode='HTML')
+
+
 @dp.message_handler(Text('Фильмы по жанрам'))
-async def title_search(message: Message):
+async def genres_keyboard_reply(message: Message):
     keyboard = InlineKeyboardMarkup()
+    global genres
     genres = await db_manager.get_all_genres()
     keyboard.add(*(InlineKeyboardButton(text=genre, callback_data=genre) for genre in genres))
     await message.reply('Выберите жанр', reply_markup=keyboard)
 
 
-@dp.callback_query_handler() # TODO здесь должны проверяться жанры
-async def genre_callback_handler(call: CallbackQuery):
+@dp.message_handler(Text('Поиск по фильтрам'))
+async def filters_search_reply(message: Message):
+    pass
+
+
+@dp.callback_query_handler(lambda call: call.data in genres)
+async def random_movies_from_genre(call: CallbackQuery):
     genre = call.data
     movies = await db_manager.get_movies_from_genre(genre)
     movies = set(random.choices(movies, k=10)) if len(movies) > 10 else movies
-    output_msg = '\n'.join(' - '.join((movie.get('title'), str(round(movie.get('rating_kp'), 1)),
-                                       f"/{movie.get('movie_id')}")) for movie in movies)
+    output_msg = movies_output_message(movies)
     await call.message.answer(f"Вот несколько случайных фильмов в жанре {genre}:\n{output_msg}")
 
 
 @dp.message_handler(regexp=r"/\d+")
-async def detail_movie_view(message: Message):
+async def detail_movie_reply(message: Message):
     movie_id = message.text[1:]
     movie = await db_manager.get_movie_from_pk(int(movie_id))
     if movie:
@@ -51,8 +68,8 @@ async def detail_movie_view(message: Message):
         director = movie.get('director')[0]
         director = ' '.join((director.get('first_name'), director.get('last_name')))
         actors = ', '.join([' '.join((actor.get('first_name'), actor.get('last_name'))) for actor in movie.get('actors')])
-        msg = f"<b>{title}</b>\n<i>Год:</i> {year}\n<i>Длительность:</i> {duration} мин.\n<i>Описание:</i>\n{description}\n" \
-              f"<i>Рейтинг кинопоиска</i> - {rating}\n<i>Жанры:</i> {genres}\n<i>Страна:</i> {countries}\n" \
+        msg = f"<b>{title}</b>\n<i>Год:</i> {year}\n<i>Длительность:</i> {duration} мин.\n<i>Жанры:</i> {genres}\n" \
+              f"<i>Страна:</i> {countries}\n<i>Описание:</i>\n{description}\n<i>Рейтинг кинопоиска</i> - {rating}\n" \
               f"<i>Режиссер:</i> {director}\n<i>В главных ролях:</i> {actors}"
         keyboard = InlineKeyboardMarkup()
         kb_link_button = InlineKeyboardButton("Kinobar", url=link_kb)
@@ -61,3 +78,14 @@ async def detail_movie_view(message: Message):
         await message.answer(msg, reply_markup=keyboard, parse_mode='HTML')
     else:
         await message.answer(f'Сожалеем, фильма с id {movie_id} не существует :(')
+
+
+@dp.message_handler(regexp=r"\w+")
+async def title_movie_search(message: Message):
+    query = message.text
+    movies = await db_manager.get_movies_from_title(query)
+    if movies:
+        output_message = movies_output_message(movies)
+        await message.answer(f"Вот что удалось найти по запросу {query}:\n{output_message}")
+    else:
+        await message.answer(f"К сожалению, по запросу {query} ничего не найдено :(")

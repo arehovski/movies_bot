@@ -5,8 +5,10 @@ from main import conn
 class DBManager:
     conn: asyncpg.Connection = conn
     GENRES = "SELECT genre from movies_genre"
-    MOVIES_FROM_GENRE = "SELECT * FROM movies_movie JOIN movies_movie_genre mmg on movies_movie.id = mmg.movie_id " \
-                        "JOIN movies_genre mg on mg.id = mmg.genre_id where genre = $1"
+    MOVIES_FROM_TITLE = "SELECT id, title, rating_kp from movies_movie where to_tsvector(title) @@ " \
+                        "plainto_tsquery($1) ORDER BY ts_rank(to_tsvector(title), plainto_tsquery($1)) DESC"
+    MOVIES_FROM_GENRE = "SELECT mm.id, title, rating_kp  FROM movies_movie mm JOIN movies_movie_genre mmg " \
+                        "on mm.id = mmg.movie_id JOIN movies_genre mg on mg.id = mmg.genre_id where mg.genre = $1"
     MOVIE_FROM_PK = ["SELECT title, year, duration_min, description, rating_kp, link_kp FROM movies_movie where id = $1",
                      "SELECT mg.genre FROM movies_genre mg JOIN movies_movie_genre mmg on mg.id = mmg.genre_id "
                      "WHERE mmg.movie_id = $1",
@@ -19,10 +21,13 @@ class DBManager:
 
     async def get_all_genres(self):
         genres = await self.conn.fetch(self.GENRES)
-        return (item.get('genre') for item in genres)
+        return [item.get('genre') for item in genres]
 
     async def get_movies_from_genre(self, genre):
         return await self.conn.fetch(self.MOVIES_FROM_GENRE, genre)
+
+    async def get_movies_from_title(self, query):
+        return await self.conn.fetch(self.MOVIES_FROM_TITLE, query)
 
     async def get_movie_from_pk(self, pk):
         movie_data, genres, countries, director, actors = \
