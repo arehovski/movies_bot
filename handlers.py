@@ -8,13 +8,20 @@ from aiogram.dispatcher.filters.state import StatesGroup, State
 from main import dp, bot
 from database import db_manager
 
-
 genres = None
 
 
 def movies_output_message(movies):
     return '\n'.join(' - '.join((movie.get('title'), str(round(movie.get('rating_kp'), 1)),
                                  f"/{movie.get('id')}")) for movie in movies)
+
+
+start_keyboard = ReplyKeyboardMarkup(row_width=2, keyboard=[
+    [
+        KeyboardButton('Поиск по названию'),
+        KeyboardButton('Поиск по фильтрам'),
+        KeyboardButton('Фильмы по жанрам')
+    ]])
 
 
 class FiltersSearchState(StatesGroup):
@@ -25,10 +32,8 @@ class FiltersSearchState(StatesGroup):
 
 @dp.message_handler(commands=['start'])
 async def start_command(message: Message):
-    keyboard = ReplyKeyboardMarkup(row_width=2)
-    keyboard.add(*(KeyboardButton(text) for text in ('Поиск по названию', 'Поиск по фильтрам', 'Фильмы по жанрам')))
     await message.answer('Привет! Выберите из меню ниже необходимую опцию для поиска нужных фильмов :)',
-                         reply_markup=keyboard)
+                         reply_markup=start_keyboard)
 
 
 @dp.message_handler(Text('Поиск по названию'))
@@ -80,10 +85,18 @@ async def country_state_reply(message: Message, state: FSMContext):
 
 @dp.message_handler(state=FiltersSearchState.year_state)
 async def year_state_reply(message: Message, state: FSMContext):
-    year = message.text
-    country = state.get_data('country')
-    genre = state.get_data('genre')
-    movies = None # TODO интерсект запрос к базе
+    year = None if message.text == 'все' else int(message.text)
+    data = await state.get_data()
+    country = data.get('country')
+    country = None if country == 'все' else country
+    genre = data.get('genre')
+    genre = None if genre == 'все' else genre
+    movies = await db_manager.get_movies_from_filters(year, country, genre)
+    movies = set(random.choices(movies, k=10)) if len(movies) > 10 else movies
+    output_msg = movies_output_message(movies)
+    # TODO добавить проверки и отрендерить сообщение. Проверить правильность запроса.
+    await message.answer(output_msg, reply_markup=start_keyboard)
+    await state.finish()
 
 
 @dp.callback_query_handler(lambda call: call.data in genres)
@@ -112,7 +125,8 @@ async def detail_movie_reply(message: Message):
         countries = ', '.join([country.get('country') for country in movie.get('countries')])
         director = movie.get('director')[0]
         director = ' '.join((director.get('first_name'), director.get('last_name')))
-        actors = ', '.join([' '.join((actor.get('first_name'), actor.get('last_name'))) for actor in movie.get('actors')])
+        actors = ', '.join(
+            [' '.join((actor.get('first_name'), actor.get('last_name'))) for actor in movie.get('actors')])
         msg = f"<b>{title}</b>\n<i>Год:</i> {year}\n<i>Длительность:</i> {duration} мин.\n<i>Жанры:</i> {genres}\n" \
               f"<i>Страна:</i> {countries}\n<i>Описание:</i>\n{description}\n<i>Рейтинг кинопоиска</i> - {rating}\n" \
               f"<i>Режиссер:</i> {director}\n<i>В главных ролях:</i> {actors}"
