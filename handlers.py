@@ -1,7 +1,10 @@
 import random
+from datetime import datetime
+from aiogram.dispatcher import FSMContext
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, \
     InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.dispatcher.filters import Command, Text
+from aiogram.dispatcher.filters.state import StatesGroup, State
 from main import dp, bot
 from database import db_manager
 
@@ -14,12 +17,18 @@ def movies_output_message(movies):
                                  f"/{movie.get('id')}")) for movie in movies)
 
 
+class FiltersSearchState(StatesGroup):
+    genre_state = State('genre')
+    country_state = State('country')
+    year_state = State('year')
+
+
 @dp.message_handler(commands=['start'])
 async def start_command(message: Message):
     keyboard = ReplyKeyboardMarkup(row_width=2)
     keyboard.add(*(KeyboardButton(text) for text in ('Поиск по названию', 'Поиск по фильтрам', 'Фильмы по жанрам')))
     await message.answer('Привет! Выберите из меню ниже необходимую опцию для поиска нужных фильмов :)',
-                        reply_markup=keyboard)
+                         reply_markup=keyboard)
 
 
 @dp.message_handler(Text('Поиск по названию'))
@@ -38,7 +47,43 @@ async def genres_keyboard_reply(message: Message):
 
 @dp.message_handler(Text('Поиск по фильтрам'))
 async def filters_search_reply(message: Message):
-    pass
+    keyboard = ReplyKeyboardMarkup()
+    genres = await db_manager.get_all_genres()
+    keyboard.add(KeyboardButton('все'))
+    keyboard.add(*(KeyboardButton(genre) for genre in genres))
+    await message.answer("<i>Выберите жанр</i>", reply_markup=keyboard, parse_mode='HTML')
+    await FiltersSearchState.genre_state.set()
+
+
+@dp.message_handler(state=FiltersSearchState.genre_state)
+async def genre_state_reply(message: Message, state: FSMContext):
+    genre = message.text
+    await state.update_data(genre=genre)
+    keyboard = ReplyKeyboardMarkup()
+    keyboard.add(KeyboardButton('все'))
+    countries = await db_manager.get_all_countries()
+    keyboard.add(*(KeyboardButton(country) for country in countries))
+    await message.answer("<i>Выберите страну</i>", reply_markup=keyboard, parse_mode='HTML')
+    await FiltersSearchState.country_state.set()
+
+
+@dp.message_handler(state=FiltersSearchState.country_state)
+async def country_state_reply(message: Message, state: FSMContext):
+    country = message.text
+    await state.update_data(country=country)
+    keyboard = ReplyKeyboardMarkup()
+    keyboard.add(KeyboardButton('все'))
+    keyboard.add(*(KeyboardButton(str(year)) for year in range(datetime.now().year, 1920, -1)))
+    await message.answer("<i>Выберите год</i>", reply_markup=keyboard, parse_mode='HTML')
+    await FiltersSearchState.year_state.set()
+
+
+@dp.message_handler(state=FiltersSearchState.year_state)
+async def year_state_reply(message: Message, state: FSMContext):
+    year = message.text
+    country = state.get_data('country')
+    genre = state.get_data('genre')
+    movies = None # TODO интерсект запрос к базе
 
 
 @dp.callback_query_handler(lambda call: call.data in genres)

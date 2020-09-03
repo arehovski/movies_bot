@@ -5,6 +5,7 @@ from main import conn
 class DBManager:
     conn: asyncpg.Connection = conn
     GENRES = "SELECT genre from movies_genre"
+    COUNTRIES = "SELECT country from movies_country"
     MOVIES_FROM_TITLE = "SELECT id, title, rating_kp from movies_movie where to_tsvector(title) @@ " \
                         "plainto_tsquery($1) ORDER BY ts_rank(to_tsvector(title), plainto_tsquery($1)) DESC"
     MOVIES_FROM_GENRE = "SELECT mm.id, title, rating_kp  FROM movies_movie mm JOIN movies_movie_genre mmg " \
@@ -22,6 +23,10 @@ class DBManager:
     async def get_all_genres(self):
         genres = await self.conn.fetch(self.GENRES)
         return [item.get('genre') for item in genres]
+
+    async def get_all_countries(self):
+        countries = await self.conn.fetch(self.COUNTRIES)
+        return sorted([item.get('country') for item in countries])
 
     async def get_movies_from_genre(self, genre):
         return await self.conn.fetch(self.MOVIES_FROM_GENRE, genre)
