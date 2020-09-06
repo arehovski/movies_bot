@@ -3,9 +3,9 @@ from datetime import datetime
 from aiogram.dispatcher import FSMContext
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, \
     InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from aiogram.dispatcher.filters import Command, Text
+from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import StatesGroup, State
-from main import dp, bot
+from main import dp
 from database import db_manager
 
 genres = None
@@ -16,12 +16,15 @@ def movies_output_message(movies):
                                  f"/{movie.get('id')}")) for movie in movies)
 
 
-start_keyboard = ReplyKeyboardMarkup(row_width=2, keyboard=[
+start_keyboard = ReplyKeyboardMarkup(keyboard=[
     [
         KeyboardButton('Поиск по названию'),
         KeyboardButton('Поиск по фильтрам'),
+    ],
+    [
         KeyboardButton('Фильмы по жанрам')
-    ]])
+    ]
+])
 
 
 class FiltersSearchState(StatesGroup):
@@ -85,17 +88,37 @@ async def country_state_reply(message: Message, state: FSMContext):
 
 @dp.message_handler(state=FiltersSearchState.year_state)
 async def year_state_reply(message: Message, state: FSMContext):
-    year = None if message.text == 'все' else int(message.text)
+    if message.text == 'все':
+        year = None
+    else:
+        try:
+            year = int(message.text)
+        except ValueError:
+            await state.finish()
+            return await message.answer("Неверные параметры, попробуйте заново :(", reply_markup=start_keyboard)
     data = await state.get_data()
     country = data.get('country')
-    country = None if country == 'все' else country
+    valid_country = country in ['все'] + await db_manager.get_all_countries()
+    if valid_country:
+        country = None if country == 'все' else country
+    else:
+        await state.finish()
+        return await message.answer("Неверные параметры, попробуйте заново :(", reply_markup=start_keyboard)
     genre = data.get('genre')
-    genre = None if genre == 'все' else genre
+    valid_genre = genre in ['все'] + await db_manager.get_all_genres()
+    if valid_genre:
+        genre = None if genre == 'все' else genre
+    else:
+        await state.finish()
+        return await message.answer("Неверные параметры, попробуйте заново :(", reply_markup=start_keyboard)
     movies = await db_manager.get_movies_from_filters(year, country, genre)
-    movies = set(random.choices(movies, k=10)) if len(movies) > 10 else movies
-    output_msg = movies_output_message(movies)
-    # TODO добавить проверки и отрендерить сообщение. Проверить правильность запроса.
-    await message.answer(output_msg, reply_markup=start_keyboard)
+    if movies:
+        movies = set(random.choices(movies, k=10)) if len(movies) > 10 else movies
+        output_msg = movies_output_message(movies)
+        await message.answer(f"<i>Вот что удалось найти по таким параметрам:</i>\n{output_msg}",
+                             reply_markup=start_keyboard, parse_mode='HTML')
+    else:
+        await message.answer("К сожалению, по таким параметрам фильмов не найдено :(", reply_markup=start_keyboard)
     await state.finish()
 
 
